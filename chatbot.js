@@ -358,7 +358,7 @@ const titulosPorGuia = {
 
 const pdfGuiasRutas = {
   'guia_tesis.pdf': '/chatbot-V3-2/guiaspdf/guia_tesis.pdf',
-  'guia_proyecto_investigacion.pdf': '/chatbot-V3-2/guiaspdf/guia_proyecto_investigacion.pdf',
+  'guia_proyecto_investigacion.pdf': 'https://github.com/Walkercito3016/Chatbot-Academico-V4/blob/main/guiaspdf/guia_proyecto_investigacion.pdf',
   'guia_proyecto_trabajo_academico.pdf': '/chatbot-V3-2/guiaspdf/guia_proyecto_trabajo_academico.pdf',
   'guia_trabajo_academico.pdf': '/chatbot-V3-2/guiaspdf/guia_trabajo_academico.pdf'
 };
@@ -704,5 +704,6 @@ if (!document.getElementById('estilos-boton-retroceder')) {
   `;
   document.head.appendChild(style);
 }
+
 
 console.log('✅ Sistema de botón retroceder cargado correctamente');
