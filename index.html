@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Chatbot PDF IA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Libreria jsPDF-->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- Showdown js (Markdown to HTML) -->
+    <script src="https://cdn.jsdelivr.net/npm/showdown@2.1.0/dist/showdown.min.js"></script>
+    <!-- Google Sign-In -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <!-- Cloudflare Turnstile -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+    <!-- Botón para mostrar/ocultar el historial (oculto inicialmente) -->
+    <button id="history-toggle-btn" style="display:none;">☰</button>
+
+    <!-- Barra lateral del historial (inicialmente oculta) -->
+    <div id="history-sidebar" class="collapsed">
+        <div class="history-header">
+            <h2>Historial</h2>
+            <button id="close-history-btn">×</button>
+        </div>
+        
+        <div class="sidebar-section">
+            <button id="new-chat-btn">
+                <span style="font-size: 18px;">+</span>
+                Nuevo chat
+            </button>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="sidebar-section-title">Recientes</div>
+        </div>
+
+        <div id="history-list">
+            <!-- El historial de chats se cargará aquí -->
+        </div>
+
+        <div class="history-footer">
+            <button id="clear-history-btn">🗑️ Limpiar Historial</button>
+        </div>
+
+        <!-- Sección de usuario -->
+        <div class="user-info-section">
+            <div class="user-info">
+                <div class="user-avatar" id="user-avatar">?</div>
+                <div class="user-details">
+                    <div class="user-name" id="user-name">Invitado</div>
+                    <div class="user-plan" id="user-plan">Plan gratuito</div>
+                </div>
+            </div>
+            <button id="logout-btn" title="Cerrar sesión">⎋</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div class="logo">🤖</div>
+            <h1>Asistente IA</h1>
+            <p class="subtitle">Tu compañero inteligente para investigación académica</p>
+            <div class="status">
+                <span class="status-dot"></span>
+                <span>En línea</span>
+            </div>
+        </div>
+
+        <!-- Banner saludo dinámico -->
+        <div id="greeting-banner" class="greeting-banner" style="display:none; text-align:center;"></div>
+
+        <!-- LOGIN GOOGLE + INVITADO -->
+        <div id="google-login-section" style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:360px;">
+            <div style="margin-bottom:18px; font-size:1.05em; color:#3b3b3b;">
+                <b>Accede o regístrate para usar el asistente</b>
+            </div>
+            <div id="g_id_onload"
+                data-client_id="578636820829-9dcksovpokbprl9fjqktehb4841hd9t8.apps.googleusercontent.com"
+                data-callback="handleGoogleSignIn"
+                data-auto_prompt="false">
+            </div>
+            <div class="g_id_signin"
+                data-type="standard"
+                data-shape="pill"
+                data-theme="outline"
+                data-text="signin_with"
+                data-size="large">
+            </div>
+            <div style="margin-top:15px; font-size:14px; color:#555; text-align:center;">
+                ¿No tienes cuenta?<br>
+                Pulsa "Acceder con Google" y luego selecciona <b>Crear cuenta</b> para registrarte.
+            </div>
+            <button id="guest-btn" style="margin-top:18px; background:#fde68a; color:#8d5702; border:none; padding:14px 32px; border-radius:9px; font-size:16px; font-weight:600; cursor:pointer; box-shadow:0 2px 8px #dbc0816c;">
+                Continuar como invitado
+            </button>
+            <div style="margin-top:10px; color:#b45309; font-size:13px; max-width:370px; text-align:center;">
+                <b>Advertencia:</b> Tendrás menos créditos para consultas y <b>sólo podrás subir hasta 3 PDFs</b> como invitado.
+            </div>
+            <div style="width:100%; display:flex; justify-content:center; margin:24px 0 0 0;">
+                <div id="cf-turnstile" class="cf-turnstile" data-sitekey="0x4AAAAAAB9NmotZqIheChi8"></div>
+            </div>
+        </div>
+
+        <!-- Botón pequeño de Google arriba a derecha, oculto inicialmente -->
+        <div id="small-google-login" style="display:none; position:fixed; top:15px; right:20px; z-index:1000; background:#fff; padding:8px 12px; border-radius:10px; box-shadow: 0 2px 12px #00000029;">
+            <div id="g_id_onload_small"
+                data-client_id="578636820829-9dcksovpokbprl9fjqktehb4841hd9t8.apps.googleusercontent.com"
+                data-callback="handleSmallGoogleSignIn"
+                data-auto_prompt="false">
+            </div>
+            <div class="g_id_signin"
+                data-type="icon"
+                data-size="small"
+                data-theme="outline"
+                data-text="signin_with">
+            </div>
+        </div>
+
+        <!-- SECCIÓN APP, inicialmente oculto -->
+        <div id="main-app-section" style="display:none;">
+            <div class="upload-section">
+                <input type="file" id="pdf-upload" accept="application/pdf" multiple>
+                <label for="pdf-upload" class="upload-btn">Seleccionar PDF</label>
+                <span id="file-names"></span>
+                <div id="pdf-selector"></div>
+            </div>
+
+            <div class="chat-container" id="chat-container">
+                <div id="pdf-thumbnails" style="display:flex; flex-wrap:wrap; gap:8px; margin: 12px 0;"></div>
+                <!-- Aquí aparecerán los mensajes y el historial -->
+            </div>
+
+            <div class="input-section">
+                <textarea id="user-input" placeholder="Haz una pregunta..." rows="1"></textarea>
+                <button id="voice-btn">🎤 Dictar pregunta</button>
+                <button id="send-btn">Enviar</button>
+                <button id="summary-btn" disabled>📝 Resumir PDF</button>
+                <button id="references-btn" disabled>🔍 Recomendar revistas/artículos</button>
+                <button id="consistency-matrix-btn" disabled>🟦 Generar matriz de consistencia</button>
+                <button id="download-chat-btn">⬇️ Descargar chat (PDF)</button>
+                <button id="detect-ai-btn">🤖 Detectar IA (ZeroGPT)</button>
+            </div>
+          <!-- Menú desplegable de tipos de informe (derecha) -->
+<div class="dropdown-menu-container" style="display:none;" id="dropdown-menu-container">
+    <button class="dropdown-toggle-btn" id="dropdown-toggle-btn">
+        📋 Seleccionar tipo de informe
+    </button>
+    
+    <!-- Panel de selección de guía -->
+    <div id="panel-seleccion-guia">
+            
+        <h2>Selecciona el tipo de informe</h2>
+        <button class="btn-guia" data-pdf="guia_tesis.pdf">Informe de tesis</button>
+        <button class="btn-guia" data-pdf="guia_proyecto_investigacion.pdf">Proyecto de investigación</button>
+        <button class="btn-guia" data-pdf="guia_proyecto_trabajo_academico.pdf">Proyecto de trabajo académico</button>
+        <button class="btn-guia" data-pdf="guia_trabajo_academico.pdf">Trabajo académico</button>
+          
+    </div>
+</div>
+
+
+<!-- Overlay para cerrar el menú -->
+<div class="dropdown-overlay" id="dropdown-overlay"></div>
+
+<!-- Panel dinámico para mostrar secciones de la guía seleccionada -->
+<div id="panel-seleccion-seccion"></div>
+
+<!-- Panel dinámico para mostrar secciones de la guía seleccionada -->
+<div id="panel-seleccion-seccion" style="display: none; flex-direction: column; gap: 10px; padding: 20px;"></div>
+
+        </div>
+        
+    </div>
+
+    <script src="responses.js"></script>
+    <script src="chatbot.js"></script>
+    <script>
+        // Variables globales
+        let currentChatId = null;
+        let currentUserEmail = null;
+        let currentUserName = null;
+        let isGuest = false;
+
+        // Función para generar ID único para cada chat
+        function generateChatId() {
+            return 'chat_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Función para obtener el usuario actual
+        function getCurrentUser() {
+            const userData = localStorage.getItem('currentUser');
+            if (userData) {
+                return JSON.parse(userData);
+            }
+            return null;
+        }
+
+        // Función para guardar el usuario actual
+        function saveCurrentUser(email, name, guest = false) {
+            const userData = {
+                email: email,
+                name: name,
+                isGuest: guest,
+                loginDate: new Date().toISOString()
+            };
+            localStorage.setItem('currentUser', JSON.stringify(userData));
+            currentUserEmail = email;
+            currentUserName = name;
+            isGuest = guest;
+            updateUserDisplay();
+        }
+
+        // Función para actualizar la visualización del usuario
+        function updateUserDisplay() {
+            const userAvatar = document.getElementById('user-avatar');
+            const userName = document.getElementById('user-name');
+            const userPlan = document.getElementById('user-plan');
+
+            if (isGuest) {
+                userAvatar.textContent = 'I';
+                userAvatar.style.background = '#fbbf24';
+                userName.textContent = 'Invitado';
+                userPlan.textContent = 'Plan gratuito';
+            } else {
+                const initial = currentUserName ? currentUserName.charAt(0).toUpperCase() : 
+                               currentUserEmail ? currentUserEmail.charAt(0).toUpperCase() : '?';
+                userAvatar.textContent = initial;
+                userAvatar.style.background = '#667eea';
+                userName.textContent = currentUserName || currentUserEmail || 'Usuario';
+                userPlan.textContent = 'Plan estudiante';
+            }
+        }
+
+        // Función para guardar mensaje en el historial
+        function saveMessageToHistory(text, sender) {
+            if (!currentChatId) {
+                currentChatId = generateChatId();
+            }
+
+            const user = getCurrentUser();
+            const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '{}');
+            
+            if (!chatHistory[currentChatId]) {
+                chatHistory[currentChatId] = {
+                    id: currentChatId,
+                    title: text.substring(0, 50) + (text.length > 50 ? '...' : ''),
+                    messages: [],
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    userEmail: user ? user.email : 'invitado'
+                };
+            }
+
+            chatHistory[currentChatId].messages.push({
+                text: text,
+                sender: sender,
+                timestamp: new Date().toISOString()
+            });
+
+            chatHistory[currentChatId].updatedAt = new Date().toISOString();
+
+            localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+            loadHistory();
+        }
+
+        // Función para cargar el historial
+        function loadHistory() {
+            const historyList = document.getElementById('history-list');
+            historyList.innerHTML = '';
+            
+            const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '{}');
+            const user = getCurrentUser();
+            
+            // Filtrar chats del usuario actual
+            const userChats = Object.values(chatHistory).filter(chat => {
+                if (!user) return chat.userEmail === 'invitado';
+                return chat.userEmail === user.email;
+            });
+
+            if (userChats.length === 0) {
+                historyList.innerHTML = '<p class="no-history">No hay chats guardados.</p>';
+                return;
+            }
+
+            // Ordenar por fecha de actualización
+            userChats.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+            userChats.forEach(chat => {
+                const chatItem = document.createElement('div');
+                chatItem.className = 'history-item';
+                if (chat.id === currentChatId) {
+                    chatItem.classList.add('active');
+                }
+                chatItem.textContent = chat.title;
+                
+                chatItem.onclick = () => {
+                    loadChat(chat.id);
+                    document.getElementById('history-sidebar').classList.add('collapsed');
+                };
+
+                historyList.appendChild(chatItem);
+            });
+        }
+
+        // Función para cargar un chat específico
+        function loadChat(chatId) {
+            const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '{}');
+            const chat = chatHistory[chatId];
+            
+            if (!chat) return;
+
+            currentChatId = chatId;
+            const chatContainer = document.getElementById('chat-container');
+            chatContainer.innerHTML = '';
+
+            chat.messages.forEach(msg => {
+                if(window.addMessage) {
+                    window.addMessage(msg.text, msg.sender);
+                }
+            });
+
+            loadHistory();
+        }
+
+        function getDecodedJwt(token) {
+            return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        }
+
+        window.handleGoogleSignIn = function(response) {
+            let email = "", given_name = "";
+            try {
+                const user = getDecodedJwt(response.credential);
+                email = user.email || '';
+                given_name = user.given_name || '';
+            } catch(e) {}
+
+            saveCurrentUser(email, given_name, false);
+
+            const horas = new Date().getHours();
+            let saludo = "";
+            if (horas < 12) saludo = "Buenos días";
+            else if (horas < 19) saludo = "Buenas tardes";
+            else saludo = "Buenas noches";
+
+            const bannerDiv = document.getElementById('greeting-banner');
+            bannerDiv.innerText = `${saludo} estudiante${given_name ? " " + given_name : ""}${!given_name && email ? " " + email : ""}`;
+            bannerDiv.style.textAlign = "center";
+            bannerDiv.style.display = "block";
+
+            document.getElementById("google-login-section").style.display = "none";
+            document.getElementById("small-google-login").style.display = "none";
+            document.getElementById("main-app-section").style.display = "";
+            document.getElementById("history-toggle-btn").style.display = "flex";
+            document.getElementById("dropdown-menu-container").style.display = "block"; // ← AGREGAR ESTA
+
+            loadHistory();
+        };
+
+        window.handleSmallGoogleSignIn = function(response) {
+            let email = "", given_name = "";
+            try {
+                const user = getDecodedJwt(response.credential);
+                email = user.email || '';
+                given_name = user.given_name || '';
+            } catch(e) {}
+
+            saveCurrentUser(email, given_name, false);
+            updateUserDisplay();
+
+            document.getElementById("small-google-login").style.display = "none";
+
+            const bannerDiv = document.getElementById('greeting-banner');
+            const horas = new Date().getHours();
+            let saludo = "";
+            if (horas < 12) saludo = "Buenos días";
+            else if (horas < 19) saludo = "Buenas tardes";
+            else saludo = "Buenas noches";
+
+            bannerDiv.innerText = `${saludo} estudiante${given_name ? " " + given_name : ""}${!given_name && email ? " " + email : ""}`;
+            bannerDiv.style.textAlign = "center";
+            bannerDiv.style.display = "block";
+
+            loadHistory();
+        };
+
+        // Invitado con captcha obligatorio
+        document.addEventListener("DOMContentLoaded", function() {
+            const guestBtn = document.getElementById("guest-btn");
+            guestBtn.addEventListener("click", async function(e) {
+                e.preventDefault();
+
+                const tokenInput = document.querySelector('input[name="cf-turnstile-response"]');
+                if (!tokenInput || !tokenInput.value) {
+                    alert("Por favor completa el captcha para continuar como invitado.");
+                    return;
+                }
+
+                saveCurrentUser('invitado@guest.com', 'Invitado', true);
+
+                document.getElementById("google-login-section").style.display = "none";
+                document.getElementById("small-google-login").style.display = "block";
+                document.getElementById("main-app-section").style.display = "";
+                document.getElementById("history-toggle-btn").style.display = "flex";
+                document.getElementById("dropdown-menu-container").style.display = "block"; // ← AGREGAR ESTA
+
+
+                const bannerDiv = document.getElementById('greeting-banner');
+                bannerDiv.innerText = "Estás usando el asistente como invitado. Puedes iniciar sesión en cualquier momento desde arriba para desbloquear más funciones.";
+                bannerDiv.style.textAlign = "center";
+                bannerDiv.style.display = "block";
+
+                loadHistory();
+            });
+
+            // Lógica del historial
+            const historySidebar = document.getElementById('history-sidebar');
+            const historyToggleBtn = document.getElementById('history-toggle-btn');
+            const closeHistoryBtn = document.getElementById('close-history-btn');
+            const clearHistoryBtn = document.getElementById('clear-history-btn');
+            const newChatBtn = document.getElementById('new-chat-btn');
+            const logoutBtn = document.getElementById('logout-btn');
+            const historyList = document.getElementById('history-list');
+            const chatContainer = document.getElementById('chat-container');
+
+            // Abrir barra lateral
+            historyToggleBtn.onclick = () => {
+                historySidebar.classList.remove('collapsed');
+                loadHistory();
+            };
+
+            // Cerrar barra lateral
+            closeHistoryBtn.onclick = () => {
+                historySidebar.classList.add('collapsed');
+            };
+
+            // Nuevo chat
+            newChatBtn.onclick = () => {
+                currentChatId = null;
+                chatContainer.innerHTML = '';
+                historySidebar.classList.add('collapsed');
+                loadHistory();
+            };
+
+            // Limpiar historial
+            clearHistoryBtn.onclick = () => {
+                if (confirm('¿Estás seguro de que quieres borrar todo el historial?')) {
+                    const user = getCurrentUser();
+                    const chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '{}');
+                    
+                    Object.keys(chatHistory).forEach(key => {
+                        if (!user && chatHistory[key].userEmail === 'invitado') {
+                            delete chatHistory[key];
+                        } else if (user && chatHistory[key].userEmail === user.email) {
+                            delete chatHistory[key];
+                        }
+                    });
+                    
+                    localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+                    currentChatId = null;
+                    chatContainer.innerHTML = '';
+                    loadHistory();
+                }
+            };
+
+            // Cerrar sesión
+            logoutBtn.onclick = () => {
+                if (confirm('¿Seguro que quieres cerrar sesión?')) {
+                    localStorage.removeItem('currentUser');
+                    currentUserEmail = null;
+                    currentUserName = null;
+                    isGuest = false;
+                    currentChatId = null;
+                    
+                    chatContainer.innerHTML = '';
+                    document.getElementById('greeting-banner').style.display = 'none';
+                    document.getElementById('main-app-section').style.display = 'none';
+                    document.getElementById('history-toggle-btn').style.display = 'none';
+                    document.getElementById('small-google-login').style.display = 'none';
+                    document.getElementById('google-login-section').style.display = 'flex';
+                    historySidebar.classList.add('collapsed');
+                }
+            };
+
+            // Verificar si hay usuario logueado al cargar
+            const user = getCurrentUser();
+            if (user) {
+                currentUserEmail = user.email;
+                currentUserName = user.name;
+                isGuest = user.isGuest;
+                
+                document.getElementById("google-login-section").style.display = "none";
+                document.getElementById("main-app-section").style.display = "";
+                document.getElementById("history-toggle-btn").style.display = "flex";
+                document.getElementById("dropdown-menu-container").style.display = "block";
+                
+                if (isGuest) {
+                    document.getElementById("small-google-login").style.display = "block";
+                }
+
+                const horas = new Date().getHours();
+                let saludo = horas < 12 ? "Buenos días" : horas < 19 ? "Buenas tardes" : "Buenas noches";
+                const bannerDiv = document.getElementById('greeting-banner');
+                
+                if (isGuest) {
+                    bannerDiv.innerText = "Estás usando el asistente como invitado. Puedes iniciar sesión en cualquier momento desde arriba para desbloquear más funciones.";
+                } else {
+                    bannerDiv.innerText = `${saludo} estudiante ${currentUserName}`;
+                }
+                bannerDiv.style.textAlign = "center";
+                bannerDiv.style.display = "block";
+
+                updateUserDisplay();
+                loadHistory();
+            }
+        });
+    </script>
+    <script>
+        // Auto-resize para el textarea:
+        const textarea = document.getElementById('user-input');
+        textarea.addEventListener('input', function() {
+            textarea.style.height = 'auto';
+            textarea.style.height = (textarea.scrollHeight) + 'px';
+            const max = parseInt(window.getComputedStyle(textarea).maxHeight);
+            if (textarea.scrollHeight > max) {
+                textarea.style.overflowY = 'auto';
+                textarea.style.height = max + 'px';
+            }
+        });
+        // Control del menú desplegable
+// Control del menú desplegable con navegación
+document.addEventListener('DOMContentLoaded', function() {
+    const dropdownToggle = document.getElementById('dropdown-toggle-btn');
+    const dropdownPanel = document.getElementById('panel-seleccion-guia');
+    const dropdownOverlay = document.getElementById('dropdown-overlay');
+    const dropdownContainer = document.getElementById('dropdown-menu-container');
+    const panelSeccion = document.getElementById('panel-seleccion-seccion');
+    
+    // Variables para controlar el estado
+    let currentPanel = 'main'; // 'main' o 'seccion'
+    
+    // Mostrar el menú cuando el usuario esté logueado
+    const user = getCurrentUser();
+    if (user) {
+        dropdownContainer.style.display = 'block';
+    }
+    
+    // Toggle del menú principal
+    if (dropdownToggle) {
+        dropdownToggle.addEventListener('click', function(e) {
+            e.stopPropagation();
+            
+            if (currentPanel === 'main') {
+                // Abrir/cerrar panel principal
+                dropdownPanel.classList.toggle('show');
+                dropdownToggle.classList.toggle('active');
+                dropdownOverlay.classList.toggle('show');
+            } else {
+                // Si estamos en panel de sección, volver al principal
+                volverAPanelPrincipal();
+            }
+        });
+    }
+    
+    // Función para volver al panel principal
+    function volverAPanelPrincipal() {
+        panelSeccion.classList.remove('show');
+        dropdownPanel.classList.add('show');
+        currentPanel = 'main';
+        dropdownToggle.innerHTML = '📋 Seleccionar tipo de informe';
+        dropdownToggle.classList.add('active');
+    }
+    
+    // Manejar clics en botones de guía
+    const botonesGuia = document.querySelectorAll('.btn-guia');
+    botonesGuia.forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const pdfSeleccionado = this.getAttribute('data-pdf');
+            const tituloGuia = this.textContent.trim();
+            
+            // Obtener las secciones correspondientes
+            const secciones = titulosPorGuia[pdfSeleccionado] || [];
+            
+            // Ocultar panel principal y mostrar panel de secciones
+            dropdownPanel.classList.remove('show');
+            mostrarPanelSecciones(tituloGuia, secciones, pdfSeleccionado);
+            currentPanel = 'seccion';
+            
+            // Actualizar texto del botón principal
+            dropdownToggle.innerHTML = '📋 ' + tituloGuia + ' ▲';
+        });
+    });
+    
+    // Función para mostrar el panel de secciones
+    function mostrarPanelSecciones(titulo, secciones, pdfFile) {
+        panelSeccion.innerHTML = '';
+        
+        // Crear header con botón volver
+        const header = document.createElement('div');
+        header.className = 'seccion-header';
+        
+        const btnVolver = document.createElement('button');
+        btnVolver.className = 'btn-volver';
+        btnVolver.innerHTML = '←';
+        btnVolver.onclick = function(e) {
+            e.stopPropagation();
+            volverAPanelPrincipal();
+        };
+        
+        const h2 = document.createElement('h2');
+        h2.textContent = titulo;
+        
+        header.appendChild(btnVolver);
+        header.appendChild(h2);
+        panelSeccion.appendChild(header);
+        
+        // Crear botones de secciones
+        secciones.forEach(seccion => {
+            const btnSeccion = document.createElement('button');
+            btnSeccion.className = 'btn-seccion';
+            btnSeccion.textContent = seccion;
+            btnSeccion.onclick = function() {
+                // Aquí puedes agregar la lógica para manejar la selección de sección
+                console.log('Sección seleccionada:', seccion, 'de', pdfFile);
+                // Cerrar menús
+                panelSeccion.classList.remove('show');
+                dropdownOverlay.classList.remove('show');
+                dropdownToggle.classList.remove('active');
+                currentPanel = 'main';
+                dropdownToggle.innerHTML = '📋 Seleccionar tipo de informe';
+                
+                // Aquí puedes agregar tu lógica para cargar el PDF y la sección
+            };
+            panelSeccion.appendChild(btnSeccion);
+        });
+        
+        // Mostrar panel de secciones
+        panelSeccion.classList.add('show');
+    }
+    
+    // Cerrar al hacer clic en el overlay
+    if (dropdownOverlay) {
+        dropdownOverlay.addEventListener('click', function() {
+            dropdownPanel.classList.remove('show');
+            panelSeccion.classList.remove('show');
+            dropdownToggle.classList.remove('active');
+            dropdownOverlay.classList.remove('show');
+            currentPanel = 'main';
+            dropdownToggle.innerHTML = '📋 Seleccionar tipo de informe';
+        });
+    }
+    
+    // Cerrar al hacer clic fuera
+    document.addEventListener('click', function(e) {
+        if (!dropdownToggle.contains(e.target) && 
+            !dropdownPanel.contains(e.target) && 
+            !panelSeccion.contains(e.target)) {
+            dropdownPanel.classList.remove('show');
+            panelSeccion.classList.remove('show');
+            dropdownToggle.classList.remove('active');
+            dropdownOverlay.classList.remove('show');
+            currentPanel = 'main';
+            dropdownToggle.innerHTML = '📋 Seleccionar tipo de informe';
+        }
+    });
+    
+    // Tecla ESC para cerrar
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            if (currentPanel === 'seccion') {
+                volverAPanelPrincipal();
+            } else {
+                dropdownPanel.classList.remove('show');
+                dropdownToggle.classList.remove('active');
+                dropdownOverlay.classList.remove('show');
+            }
+        }
+    });
+});
+    </script>
+    
+</body>
+</html>
